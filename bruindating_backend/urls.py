@@ -22,4 +22,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('chat/', include('chat.urls')),
     path('', TemplateView.as_view(template_name='test_chat.html'), name='home'),
+    path("auth/", include("auth_app.urls")),
+
 ]
