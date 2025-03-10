@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BruinDating Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-r from-blue-50 to-indigo-50 min-h-screen">
+    <!-- Initial Join Screen -->
+    <div id="join-screen" class="fixed inset-0 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
+            <h1 class="text-2xl font-bold text-center mb-6 text-blue-600">Join Chat Room</h1>
+            <div class="space-y-4">
+                <div>
+                    <label for="room-input" class="block text-sm font-medium text-gray-700 mb-1">Room Name</label>
+                    <input type="text" id="room-input" value="test_room"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                </div>
+                <button onclick="joinRoom()"
+                    class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                    Join Room
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Interface -->
+    <div id="chat-interface" class="hidden h-screen flex flex-col">
+        <!-- Header -->
+        <div class="bg-white shadow-md p-4">
+            <div class="max-w-6xl mx-auto flex justify-between items-center">
+                <div class="flex items-center space-x-4">
+                    <h1 class="text-xl font-bold text-gray-800">Room: <span id="room-name" class="text-blue-600"></span></h1>
+                    <div id="user-id" class="text-sm text-gray-600"></div>
+                </div>
+                <button onclick="leaveRoom()" class="text-red-500 hover:text-red-600">Leave Room</button>
+            </div>
+        </div>
+
+        <!-- Main Chat Area -->
+        <div class="flex-1 max-w-6xl mx-auto w-full flex gap-4 p-4 overflow-hidden">
+            <!-- Messages Section -->
+            <div class="flex-1 flex flex-col bg-white rounded-xl shadow-md">
+                <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-4">
+                    <!-- Messages will appear here -->
+                </div>
+                
+                <!-- Message Input -->
+                <div class="border-t p-4">
+                    <div class="flex gap-2">
+                        <input type="text" id="message-input"
+                            class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            placeholder="Type your message...">
+                        <button onclick="sendMessage()"
+                            class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                            Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Online Users Section -->
+            <div class="w-64 bg-white rounded-xl shadow-md p-4">
+                <h2 class="text-lg font-semibold mb-4">Online Users</h2>
+                <div id="online-users" class="space-y-2">
+                    <!-- Online users will appear here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chatSocket = null;
+        let myUserId = null;
+        let currentRoom = null;
+
+        function joinRoom() {
+            const roomName = document.getElementById('room-input').value.trim();
+            if (!roomName) return;
+
+            currentRoom = roomName;
+            document.getElementById('room-name').textContent = roomName;
+
+            if (chatSocket) {
+                chatSocket.close();
+            }
+
+            chatSocket = new WebSocket(
+                'ws://' + window.location.host + '/ws/chat/' + roomName + '/'
+            );
+
+            chatSocket.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                console.log('Received:', data);
+
+                switch(data.type) {
+                    case 'user_info':
+                        myUserId = data.user_id;
+                        document.getElementById('user-id').textContent = `Your ID: ${myUserId}`;
+                        break;
+
+                    case 'user_joined':
+                        if (data.user_id !== myUserId) {
+                            addNotification(`User ${data.user_id} joined the room`);
+                        }
+                        updateUserList(data.users);
+                        break;
+
+                    case 'user_left':
+                        addNotification(`User ${data.user_id} left the room`);
+                        updateUserList(data.users);
+                        break;
+
+                    case 'chat_message':
+                        addMessage(data.message, data.user_id, data.timestamp);
+                        break;
+                }
+            };
+
+            chatSocket.onopen = function(e) {
+                document.getElementById('join-screen').classList.add('hidden');
+                document.getElementById('chat-interface').classList.remove('hidden');
+                addNotification('You joined the chat');
+            };
+
+            chatSocket.onclose = function(e) {
+                addNotification('Connection lost. Please refresh the page.');
+            };
+        }
+
+        function leaveRoom() {
+            if (chatSocket) {
+                chatSocket.close();
+            }
+            document.getElementById('join-screen').classList.remove('hidden');
+            document.getElementById('chat-interface').classList.add('hidden');
+            document.getElementById('chat-messages').innerHTML = '';
+            document.getElementById('online-users').innerHTML = '';
+        }
+
+        function updateUserList(users) {
+            const userList = document.getElementById('online-users');
+            userList.innerHTML = users.map(userId => `
+                <div class="px-3 py-2 rounded-lg ${userId === myUserId ? 'bg-blue-50 border-l-4 border-blue-500' : 'bg-gray-50'}">
+                    ${userId} ${userId === myUserId ? '<span class="text-blue-500 text-sm ml-1">(You)</span>' : ''}
+                </div>
+            `).join('');
+        }
+
+        function addMessage(message, userId, timestamp) {
+            const messages = document.getElementById('chat-messages');
+            const isMyMessage = userId === myUserId;
+            
+            messages.innerHTML += `
+                <div class="flex ${isMyMessage ? 'justify-end' : 'justify-start'}">
+                    <div class="max-w-[70%] ${isMyMessage ? 'bg-blue-600 text-white' : 'bg-gray-100'} rounded-lg px-4 py-2">
+                        <div class="text-sm ${isMyMessage ? 'text-blue-200' : 'text-gray-600'} mb-1">${userId}</div>
+                        <div class="break-words">${message}</div>
+                        <div class="text-xs ${isMyMessage ? 'text-blue-200' : 'text-gray-500'} mt-1">${timestamp}</div>
+                    </div>
+                </div>
+            `;
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function addNotification(message) {
+            const messages = document.getElementById('chat-messages');
+            messages.innerHTML += `
+                <div class="flex justify-center">
+                    <div class="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-full">
+                        ${message}
+                    </div>
+                </div>
+            `;
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('message-input');
+            const message = messageInput.value.trim();
+            
+            if (message && chatSocket) {
+                chatSocket.send(JSON.stringify({
+                    'message': message
+                }));
+                messageInput.value = '';
+            }
+        }
+
+        // Handle Enter key
+        document.getElementById('message-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
