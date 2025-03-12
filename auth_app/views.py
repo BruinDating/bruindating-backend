@@ -80,6 +80,8 @@ def google_callback(request):
 
     User = get_user_model()
 
+    new_user = False;
+
     try:
         user = User.objects.get(email=email)
         user.google_id = user_data.get("sub")
@@ -87,6 +89,7 @@ def google_callback(request):
         user.is_ucla_verified = True
         user.save()
     except User.DoesNotExist:
+        new_user = True;
         username = email.split("@")[0]
 
         base_username = username
@@ -114,7 +117,7 @@ def google_callback(request):
     login(request, user)
 
     frontend_url = settings.FRONTEND_URL
-    return redirect(f"{frontend_url}/auth/callback?access_token={tokens['access']}&refresh_token={tokens['refresh']}&username={user.username}")
+    return redirect(f"{frontend_url}/auth/callback?access_token={tokens['access']}&refresh_token={tokens['refresh']}&username={user.username}&new_user={str(new_user).lower()}")
 
 
 @api_view(["POST"])
