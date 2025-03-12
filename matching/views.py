@@ -10,22 +10,6 @@ from .serializers import MatchSerializer, PotentialMatchSerializer, UserSerializ
 from auth_app.models import UCLAUser
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])  # ✅ Public access
-def get_users_to_swipe(request):
-    return Response(MOCK_USERS)
-
-@api_view(["POST"])
-@permission_classes([AllowAny])  # ✅ Public access
-def swipe_action(request):
-    """Handles liking and disliking logic"""
-    return Response({"message": "Swipe recorded!"})
-
-@api_view(["GET"])
-@permission_classes([AllowAny])  # ✅ Public access
-def get_matches(request):
-    """Returns mock match data"""
-    return Response([{"id": 5, "name": "Emily"}, {"id": 6, "name": "David"}])
 
 class MatchViewSet(viewsets.ModelViewSet):
     serializer_class = MatchSerializer
@@ -34,17 +18,14 @@ class MatchViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_anonymous:  # ✅ Prevent AnonymousUser issue
-            return Match.objects.none()  # ✅ Return empty queryset instead of error
+        if user.is_anonymous:  
+            return Match.objects.none() 
         return Match.objects.filter(user=user)
 
     def get_object(self):
         user = self.request.user
         match, created = Match.objects.get_or_create(user=user)
         return match
-
-
-
 
 
     @action(detail=False, methods=["get"])
@@ -228,23 +209,40 @@ def handle_match_creation(swiper, swiped_user):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def handle_swipe(request):
+    """
+    Handles swipe actions and match creation between users.
+    
+    Expected POST request data:
+    - user_id (int): ID of the person being swiped on
+    - action (str): Either 'like' or 'dislike'
+    - swiper_email (str): Email of person doing the swipe
+    
+    Returns:
+    - For matches: {'success': True, 'is_match': True, 'message': '...'}
+    - For likes without match: {'success': True, 'is_match': False, 'message': '...'}
+    - For dislikes: {'success': True, 'message': '...'}
+    - For errors: {'error': 'error message'}
+    """
     print("\n=== INCOMING SWIPE REQUEST ===")
     print("Request data:", request.data)
     
+    # Parse incoming request data
     swiped_id = request.data.get('user_id')
     action = request.data.get('action')
-    swiper_email = request.data.get('swiper_email', 'jasonvu8@ucla.edu')  # Default for testing
+    swiper_email = request.data.get('swiper_email')
     
     print(f"\nParsed data:")
     print(f"swiped_id: {swiped_id}")
     print(f"action: {action}")
     print(f"swiper_email: {swiper_email}")
     
+    # Validate required fields
     if not swiped_id or action not in ['like', 'dislike']:
         print("Invalid data received!")
         return Response({'error': 'Invalid data'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
+        # Get both users involved in the swipe
         swiped_user = UCLAUser.objects.get(id=swiped_id)
         swiper = UCLAUser.objects.get(email=swiper_email)
         
@@ -256,7 +254,7 @@ def handle_swipe(request):
         if swiper.id == swiped_user.id:
             return Response({'error': 'Cannot swipe on yourself'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Create swipe record
+        # Create swipe record in database
         swipe = Swipe.objects.create(
             swiper=swiper,
             swiped=swiped_user,
@@ -265,51 +263,35 @@ def handle_swipe(request):
         print(f"\nCreated swipe record (ID: {swipe.id}):")
         print(f"{swiper.email} -> {swiped_user.email} ({action})")
         
-        # Get or create match profiles for both users regardless of action
-        user_match, _ = Match.objects.get_or_create(user=swiper)
-        target_match, _ = Match.objects.get_or_create(user=swiped_user)
-        
         if action == 'like':
             print("\nHandling like action...")
-            # Add to approved lists
-            user_match.approved.add(swiped_user)
-            print(f"Added {swiped_user.email} to {swiper.email}'s approved list")
+            # Use handle_match_creation to check for match and handle all match logic
+            is_match = handle_match_creation(swiper, swiped_user)
             
-            # Check for mutual like
-            mutual_like = Swipe.objects.filter(
-                swiper=swiped_user,
-                swiped=swiper,
-                action='like'
-            ).exists()
-            
-            print(f"Checking mutual like: {mutual_like}")
-            
-            if mutual_like:
-                print("Found mutual like! Creating match...")
-                # Add mutual approvals
-                target_match.approved.add(swiper)
-                
-                # Add mutual matches
-                user_match.matched.add(swiped_user)
-                target_match.matched.add(swiper)
-                
-                print("\nVerifying match creation:")
-                print(f"{swiper.email}'s matches:", [u.email for u in user_match.matched.all()])
-                print(f"{swiped_user.email}'s matches:", [u.email for u in target_match.matched.all()])
-                
+            if is_match:
+                print("Match created successfully!")
+                # TODO: Add your match handling logic here
+                # - Initialize chat functionality
+                # - Send match notifications
+                # - Update UI for both users
+                # - Store match metadata (timestamp, etc.)
                 return Response({
                     'success': True,
                     'is_match': True,
                     'message': f'You matched with {swiped_user.email}!'
                 })
             else:
-                print("No mutual like yet - waiting for reciprocal like")
+                print("No match yet - waiting for reciprocal like")
                 return Response({
                     'success': True,
                     'is_match': False,
                     'message': 'Like recorded'
                 })
         else:  # dislike
+            # Get or create match profiles for both users
+            user_match, _ = Match.objects.get_or_create(user=swiper)
+            target_match, _ = Match.objects.get_or_create(user=swiped_user)
+            
             # Remove from approved and matched if they exist
             user_match.approved.remove(swiped_user)
             user_match.matched.remove(swiped_user)

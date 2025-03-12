@@ -1,8 +1,9 @@
-from rest_framework.decorators import api_view, permission_classes  # ✅ Fix this
-from rest_framework.permissions import AllowAny  # ✅ Fix this
-from rest_framework import viewsets, permissions
+from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.permissions import AllowAny
+from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from .models import Profile, Settings
 from .serializers import ProfileSerializer, SettingsSerializer
 from auth_app.models import UCLAUser
@@ -37,11 +38,37 @@ class ProfileViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Profile.objects.all()
 
+    @action(detail=False, methods=['get'])
+    def by_email(self, request):
+        """Get profile by email"""
+        email = request.query_params.get('email', None)
+        if not email:
+            return Response(
+                {'error': 'Email parameter is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user = UCLAUser.objects.get(email=email)
+            profile = Profile.objects.get(user=user)
+            serializer = self.get_serializer(profile)
+            return Response(serializer.data)
+        except UCLAUser.DoesNotExist:
+            return Response(
+                {'error': 'User not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Profile.DoesNotExist:
+            return Response(
+                {'error': 'Profile not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
     def create(self, request):
         print("Received profile creation request with data:", request.data)
         
         # Get or create a user based on the email
-        email = request.data.get('email', 'default@ucla.edu')  # You might want to change this default
+        email = request.data.get('email', 'default@ucla.edu')
         user, created = UCLAUser.objects.get_or_create(
             email=email,
             defaults={'username': email.split('@')[0]}
@@ -65,16 +92,16 @@ class ProfileViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.data, status=201)
 
-    def list(self, request):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
     def update(self, request, pk=None):
         profile = self.get_object()
         serializer = self.get_serializer(profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        return Response(serializer.data)
+
+    def list(self, request):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
 class SettingsViewSet(viewsets.ModelViewSet):
