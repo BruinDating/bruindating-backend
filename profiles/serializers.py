@@ -19,6 +19,19 @@ class ProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'email']
 
+    def to_representation(self, instance):
+        # Get the basic representation
+        data = super().to_representation(instance)
+        
+        # If profile_picture is not None, ensure it's a full URL
+        if data['profile_picture']:
+            if not data['profile_picture'].startswith('http'):
+                request = self.context.get('request')
+                if request:
+                    data['profile_picture'] = request.build_absolute_uri(data['profile_picture'])
+        
+        return data
+
 
 class SettingsSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email", read_only=True)
