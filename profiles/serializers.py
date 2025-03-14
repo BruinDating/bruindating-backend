@@ -27,8 +27,8 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 
 class SettingsSerializer(serializers.ModelSerializer):
-    email = serializers.EmailField(source="user.email", read_only=True)
-    name = serializers.CharField(source="user.name", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True, required=False, allow_null=True)
+    name = serializers.CharField(source="user.name", read_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Settings

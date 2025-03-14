@@ -21,7 +21,7 @@ class Profile(models.Model):
 
 
 class Settings(models.Model):
-    user = models.OneToOneField(UCLAUser, on_delete=models.CASCADE, related_name="settings")
+    user = models.OneToOneField(UCLAUser, on_delete=models.CASCADE, related_name="settings", null=True, blank=True)
     email_notifications = models.BooleanField(default=True)
     match_notifications = models.BooleanField(default=True)
     message_notifications = models.BooleanField(default=True)
@@ -49,4 +49,6 @@ class Settings(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.user.email}'s Settings"
+        if self.user:
+            return f"{self.user.email}'s Settings"
+        return "Public Settings"
